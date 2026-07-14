@@ -1,6 +1,6 @@
 # English-Vocabulary-memorizing-system
 English Vocabulary memorizing system for Chinese senior high school students. Others can use as well.
-# ⚡ 高中英语智能自适应背词系统 (v6.0 - 状态取反版)
+# ⚡ 高中英语智能自适应背词系统 (v1.0)
 
 本系统是一款专为高中英语“词性转换”与“派生词关联”设计的终端控制台（Terminal）自适应词汇强化工具。系统在 v6.0 版本中深度重构了词库选择逻辑，并引入了遗忘曲线追踪算法与智能文本模糊匹配技术，旨在为使用者提供高效率、系统化的词汇复盘方案。
 
