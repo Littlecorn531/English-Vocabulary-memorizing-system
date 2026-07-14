@@ -58,6 +58,7 @@ English Vocabulary memorizing system for Chinese senior high school students. Ot
 
 文件必须以 {} 包装，每个键对应一个子单词表，其值包含单词属性数组：
 
+···
 {
     "选择性必修二 Unit 4 - Lesson 1": [
         {
@@ -69,6 +70,7 @@ English Vocabulary memorizing system for Chinese senior high school students. Ot
         }
     ]
 }
+···
 
 2. 五段式 TXT 格式
 
