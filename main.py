@@ -1276,14 +1276,29 @@ def wsgi_app(environ, start_response):
         due_pool = [w for w in active_pool if dm.stats.get(w['word'], {}).get('next_date', now_time_iso) <= now_time_iso]
         pool_to_draw = due_pool if due_pool else active_pool
         
+        # 🌟 核心改进：当用户明确选择“词形变化（Mode 3）”时，在抽词源头进行过滤。
+        # 仅筛选出真正配置了“不同拼写衍生词”的单词进入该场测试的候选池。
+        quiz_mode = str(data.get("mode", "1"))
+        if quiz_mode == '3':
+            filtered_pool = [
+                w for w in pool_to_draw 
+                if any(k.strip().lower() != w['word'].strip().lower() for k in w.get("related_forms", {}).keys())
+            ]
+            # 容错：如果用户选中的整个小节完全没有可变形的单词，则保留原样，避免候选池为空
+            if filtered_pool:
+                pool_to_draw = filtered_pool
+        
         ss.current_pool = active_pool
+        if not pool_to_draw:
+            pool_to_draw = active_pool if active_pool else [{"word": "test", "meanings": ["测试"], "sentences": ["test"], "hint": "n.", "related_forms": {}}]
+            
         ss.quiz_words = [random.choice(pool_to_draw) for _ in range(data.get("count", 5))]
         ss.total_ques = data.get("count", 5)
         ss.current_index = 0
         ss.error_count = 0
         ss.answered_count = 0  
         ss.start_time = time.perf_counter()
-        ss.current_mode = str(data.get("mode", "1"))
+        ss.current_mode = quiz_mode
         return api_response(start_response, {"success": True})
 
     elif path == '/api/exit_quiz':
