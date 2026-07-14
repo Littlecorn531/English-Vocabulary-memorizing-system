@@ -36,7 +36,7 @@ LOGS_FILE = "study_logs.json"
 CUSTOM_FILE = "custom_lists.json"
 CONFIG_FILE = "vocab_config.json"
 
-# ==================== 2. UI 美化模块 (极致对齐版) ====================
+# ==================== 2. UI 模块 (精致对齐版) ====================
 class UI:
     HEADER, BLUE, CYAN, GREEN, YELLOW, RED, GRAY, END, BOLD = '\033[95m', '\033[94m', '\033[96m', '\033[92m', '\033[93m', '\033[91m', '\033[90m', '\033[0m', '\033[1m'
     
@@ -46,6 +46,7 @@ class UI:
 
     @staticmethod
     def get_visual_width(text):
+        """精准计算终端中英文字符、ANSI代码及修饰符的实际视觉渲染宽度"""
         clean_text = re.sub(r'\033\[[0-9;]*m', '', text)
         width = 0
         for c in clean_text:
@@ -62,6 +63,7 @@ class UI:
 
     @staticmethod
     def box_print(title, text_list, border_color='\033[94m'):
+        """完美对齐双线框打印函数"""
         max_content_len = max(UI.get_visual_width(title), 60)
         for line in text_list:
             max_content_len = max(max_content_len, UI.get_visual_width(line) + 2)
@@ -83,7 +85,7 @@ class UI:
             print(border_color + "║" + UI.END + " " + line + " " * (right_pad + 1) + border_color + "║" + UI.END)
         print(border_color + "╚" + "═" * box_width + "╝" + UI.END)
 
-# ==================== 3. 核心数据管理中心 (完整方法绑定) ====================
+# ==================== 3. 数据管理中心 ====================
 class DataManager:
     def __init__(self):
         self.stats = {}    
@@ -184,7 +186,7 @@ class DataManager:
             "total": total,
             "errors": errors,
             "duration": time_str,
-            "raw_duration": int(duration_secs) # 记录原始秒数用于高维数据统计
+            "raw_duration": int(duration_secs)
         }
         self.logs.append(log_entry)
         self.save_all()
@@ -281,7 +283,7 @@ def generate_smart_distractors_with_sources(target_item, full_pool):
             seen_meanings.add(chosen_m)
     return distractors_data
 
-# ==================== 5. 智能合并导入器 ====================
+# ==================== 5. 双格式智能合并导入器 ====================
 def import_local_file():
     UI.clear_screen()
     content = [
@@ -295,9 +297,9 @@ def import_local_file():
     UI.box_print(" 📥 导入本地外部词汇表 ", content, UI.CYAN)
     path = input(f"\n✍️  请输入要导入的文件路径 (如 ./my_vocab.json 或 ./vocab.txt, 输入 q 退出): ").strip()
     
-    if path.lower() == 'q' or path == ' ': return
+    if path.lower() == 'q' or path == ' ' or path == '': return
     if not os.path.exists(path):
-        input(f"\n{UI.RED}❌ 文件未找到，导入失败。按回车返回...{UI.END}")
+        input(f"\n{UI.RED}❌ [错误] 文件未找到。按回车返回...{UI.END}")
         return
     
     try:
@@ -323,11 +325,11 @@ def import_local_file():
                 dm.save_all()
                 success_info = [
                     f"✔ 成功安全导入 JSON 词条共计: {UI.GREEN}{imported_count}{UI.END} 个",
-                    "🔗 词形转换引擎已完成全自适应网状双向绑定！"
+                    "🔗 关联结构已完成双向绑定。"
                 ]
                 UI.box_print(" 🎉 JSON 导入成功 🎉 ", success_info, UI.GREEN)
             else:
-                print(f"\n{UI.YELLOW}⚠ 未检测到可添加的新词条（可能已全部存在）。{UI.END}")
+                print(f"\n{UI.YELLOW}⚠ 未检测到可添加的新词条（可能已存在）。{UI.END}")
             input(f"\n{UI.GRAY}按回车键返回主菜单...{UI.END}")
             return
 
@@ -420,11 +422,17 @@ def select_word_pool():
         text_lines.append(f" * 支持区间取反 (如输入 '[1,3]' 切换选择状态, 输入 q 退出)")
         text_lines.append(f" * 输入 'i' 导入新文件。")
         
-        UI.box_print(" 📚 智能自适应词库多选面板 ", text_lines, UI.BLUE)
+        UI.box_print(" 📚 词库选择面板 ", text_lines, UI.BLUE)
         choice = input(f"\n✍️  请做出选择: ").strip()
         
         if choice.lower() == 'q' or choice == ' ':
-            break
+            selected_list = [k for k in keys if k in set(dm.last_selected_keys)]
+            if not selected_list:
+                selected_list = list(keys)
+            pool = []
+            for k in selected_list: pool.extend(full_bank[k])
+            display_name = "+".join(selected_list) if len(selected_list) <= 2 else f"{selected_list[0]}等{len(selected_list)}个词表"
+            return pool, display_name
             
         if choice == '':
             if not selected_set:
@@ -518,18 +526,33 @@ def view_current_pool_paginated(word_pool, pool_name):
             if cmd == 'q' or cmd == ' ':
                 break
 
-# ==================== 7. 核心测试 Session 引擎 ====================
+# ==================== 7. 核心测试 Session 引擎 (彻底修复 Q 无法退出 Bug) ====================
 def run_quiz_session(word_pool, mode_choice):
     if not word_pool:
-        input(f"\n{UI.RED}❌ 激活词表为空！请先去选项 [7] 配置或加载单词。{UI.END}")
+        input(f"\n{UI.RED}❌ 激活词表为空！请先去选项 [7] 配置或加载词表。{UI.END}")
         return
         
     UI.clear_screen()
-    try: total_ques = int(input(f"🔢 你期望本次练习完成多少道题？(输入 q 退出): ").strip())
-    except ValueError: total_ques = 5
+    
+    # 🌟 0. 拦截未被裁剪的原始输入：如果敲了空格或输入 'q'，立即退出
+    raw_input = input(f"🔢 你期望本次练习完成多少道题？(默认 5 道，输入 q 或空格退出): ").lower()
+    if raw_input == 'q' or raw_input == ' ':
+        return
+        
+    # 🌟 1. 拦截裁剪后的输入，解析题量
+    raw_ans = raw_input.strip()
+    if raw_ans == 'q':
+        return
+        
+    try:
+        total_ques = int(raw_ans) if raw_ans else 5
+        if total_ques <= 0:
+            return
+    except ValueError:
+        total_ques = 5
         
     error_cnt = 0
-    actual_mode_name = "形似字义辨析" if mode_choice=='1' else "完形空缺拼写" if mode_choice=='2' else "语法填空词形变化" if mode_choice=='3' else "综合挑战"
+    actual_mode_name = "形似字义辨析" if mode_choice=='1' else "完形空缺拼写" if mode_choice=='2' else "语法填空词形变化" if mode_choice=='3' else "综合模式"
     input_mapping = {'A': 0, '1': 0, 'B': 1, '2': 1, 'C': 2, '3': 2, 'D': 3, '4': 3}
     
     start_time = time.perf_counter()
@@ -551,7 +574,6 @@ def run_quiz_session(word_pool, mode_choice):
         if current_sub_mode == '1':  
             correct_meaning_plain = random.choice(target['meanings'])
             
-            # 🌟 新功能：使用配有源词映射的干扰项生成器
             options_data = [(correct_meaning_plain, target['word'])]
             wrong_data = generate_smart_distractors_with_sources(target, word_pool)
             options_data.extend(wrong_data)
@@ -561,27 +583,27 @@ def run_quiz_session(word_pool, mode_choice):
             labels_display = ['A (1)', 'B (2)', 'C (3)', 'D (4)']
             
             box = [
-                f"请在库内动态匹配出的干扰项中精准辨析：", "",
+                f"请选择正确的中文释义：", "",
                 f"   单词: {UI.YELLOW}{UI.BOLD}{target['word']}{UI.END}  (提示词性: {target.get('hint', 'n.')})", ""
             ]
             for l, o in zip(labels_display, options): box.append(f" 【 {UI.CYAN}{l}{UI.END} 】 {o}")
-            UI.box_print(" 📝 核心义项深度辨析 ", box, UI.CYAN)
+            UI.box_print(" 📝 看词辨义 ", box, UI.CYAN)
             ans = input("\n🤔 你的选择 (A-D 或 1-4, 输入 q 或空格退出): ").strip().upper()
             
-            if ans == 'Q' or ans == ' ':
-                exit_session = True
-                break
+            if ans == 'Q' or ans == ' ' or ans == '':
+                if ans == 'Q' or ans == ' ':
+                    exit_session = True
+                    break
                 
             is_ok = (ans in input_mapping and options[input_mapping[ans]] == correct_meaning_plain)
             dm.log_word_attempt(target['word'], "meaning", is_ok)
             target_word_correct = target['word']
             
             if is_ok:
-                print(f"\n{UI.GREEN}✔ 完全正确！思维非常清晰！{UI.END}")
+                print(f"\n{UI.GREEN}✔ 正确{UI.END}")
             else:
-                print(f"\n{UI.RED}❌ 掉进陷阱啦！{UI.END} 正确答案为: {UI.GREEN}{target_word_correct}{UI.END} [{target.get('hint','n.')}] -> {', '.join(target['meanings'])}")
-                # 🌟 新功能：在答错时显示各选项对应的单词解析
-                print(f"   {UI.YELLOW}各选项对应原词解析：{UI.END}")
+                print(f"\n{UI.RED}❌ 错误{UI.END} 正确答案为: {UI.GREEN}{target_word_correct}{UI.END} [{target.get('hint','n.')}] -> {', '.join(target['meanings'])}")
+                print(f"   {UI.YELLOW}选项原词解析：{UI.END}")
                 for idx_opt, item in enumerate(options_data):
                     lbl = ['A', 'B', 'C', 'D'][idx_opt]
                     opt_meaning, opt_word = item
@@ -604,29 +626,30 @@ def run_quiz_session(word_pool, mode_choice):
                 f"  {blank_s} ({w_len} 个字母)", "",
                 f"  * 如果一时想不起来，可以输入 'q' 获取中文意思提示"
             ]
-            UI.box_print(" 🔤 完形空缺拼写 ", box, UI.HEADER)
+            UI.box_print(" 🔤 拼写填空 ", box, UI.HEADER)
             
             ans = input("\n✍️ 请输入完整单词 (输入 q 或空格退出): ").strip().lower()
-            if ans == 'q' or ans == ' ':
-                exit_session = True
-                break
+            if ans == 'q' or ans == ' ' or ans == '':
+                if ans == 'q' or ans == ' ':
+                    exit_session = True
+                    break
             if ans == 'q':
-                print(f"💡 【中文提示】: {UI.YELLOW}{'/'.join(target['meanings'])}{UI.END}")
-                ans = input("✍️ 再次尝试输入完整单词: ").strip().lower()
+                print(f"提示: {UI.YELLOW}{'/'.join(target['meanings'])}{UI.END}")
+                ans = input("请再次尝试输入完整单词: ").strip().lower()
                 
             is_ok = (ans == target['word'].lower())
             
             if not is_ok and fuzzy_check(ans, target['word']):
-                print(f"\n{UI.YELLOW}⚠️ 很接近了！拼写正确答案是: {UI.BOLD}{target['word']}{UI.END}")
+                print(f"\n拼写接近，正确答案是: {UI.BOLD}{target['word']}{UI.END}")
                 time.sleep(1.2)
                 
             dm.log_word_attempt(target['word'], "spelling", is_ok)
             target_word_correct = target['word']
             
             if is_ok:
-                print(f"\n{UI.GREEN}✔ 完全正确！思维非常清晰！{UI.END}")
+                print(f"\n{UI.GREEN}✔ 正确{UI.END}")
             else:
-                print(f"\n{UI.RED}❌ 掉进陷阱啦！{UI.END} 正确答案为: {UI.GREEN}{target_word_correct}{UI.END} [{target.get('hint','n.')}] -> {', '.join(target['meanings'])}")
+                print(f"\n{UI.RED}❌ 错误{UI.END} 正确答案为: {UI.GREEN}{target_word_correct}{UI.END} [{target.get('hint','n.')}] -> {', '.join(target['meanings'])}")
             
         else:  
             relations = target.get("related_forms", {})
@@ -651,19 +674,20 @@ def run_quiz_session(word_pool, mode_choice):
             ]
             UI.box_print(" ✨ 语法填空：关联词形变化突破 ", box, UI.YELLOW)
             ans = input("\n✍️ 填写正确词形 (输入 q 或空格退出): ").strip().lower()
-            if ans == 'q' or ans == ' ':
-                exit_session = True
-                break
+            if ans == 'q' or ans == ' ' or ans == '':
+                if ans == 'q' or ans == ' ':
+                    exit_session = True
+                    break
                 
             is_ok = (ans == target_word_correct.lower())
             dm.log_word_attempt(target_word_correct, "spelling", is_ok)
             
             if is_ok:
-                print(f"\n{UI.GREEN}✔ 完全正确！思维非常清晰！{UI.END}")
+                print(f"\n{UI.GREEN}✔ 正确{UI.END}")
             else:
-                print(f"\n{UI.RED}❌ 掉进陷阱啦！{UI.END} 正确答案为: {UI.GREEN}{target_word_correct}{UI.END} [{target.get('hint','n.')}] -> {', '.join(target['meanings'])}")
+                print(f"\n{UI.RED}❌ 错误{UI.END} 正确答案为: {UI.GREEN}{target_word_correct}{UI.END} [{target.get('hint','n.')}] -> {', '.join(target['meanings'])}")
             
-        print(f"\n{UI.GRAY}按回车键进入下一题... (输入 q 或空格退出){UI.END}")
+        print(f"\n按回车键进入下一题... (输入 q 或空格退出)")
         next_cmd = input().strip().lower()
         if next_cmd == 'q' or next_cmd == ' ':
             exit_session = True
@@ -675,31 +699,31 @@ def run_quiz_session(word_pool, mode_choice):
     
     UI.clear_screen()
     report = [
-        f" 本轮自适应深度挑战已圆满结束！", "",
-        f"  练习统计情况如下：",
-        f"   - 总题数量: {total_ques} 道", 
-        f"   - 答错数量: {UI.RED}{error_cnt}{UI.END} 道",
-        f"   - 本轮用时: {UI.YELLOW}{time.strftime('%M分%S秒', time.gmtime(duration_secs))}{UI.END}", 
-        f"   - 终结正确率: {UI.GREEN}{((total_ques-error_cnt)/total_ques)*100:.1f}%{UI.END}"
+        f" 本轮测试已结束", "",
+        f"  测试数据统计：",
+        f"   - 总题数: {total_ques} 道", 
+        f"   - 做错数: {UI.RED}{error_cnt}{UI.END} 道",
+        f"   - 练习用时: {UI.YELLOW}{time.strftime('%M分%S秒', time.gmtime(duration_secs))}{UI.END}", 
+        f"   - 正确率: {UI.GREEN}{((total_ques-error_cnt)/total_ques)*100:.1f}%{UI.END}"
     ]
-    UI.box_print(" 📊 本轮深度战报（已存本地） ", report, UI.GREEN)
-    input(f"\n{UI.GRAY}按回车键返回主菜单...{UI.END}")
+    UI.box_print(" 📊 测试统计 ", report, UI.GREEN)
+    input(f"\n按回车键返回主菜单...{UI.END}")
 
-# ==================== 8. 数据反馈与清理中心 (含弱项 MD 导出与总数据日志) ====================
+# ==================== 8. 数据反馈与清理中心 ====================
 def show_data_center():
     while True:
         UI.clear_screen()
         box = [
-            f" 1. 查看 【每个单词的高频错误排行】",
-            f" 2. 查看 【历次背词用时与完整统计日志】 (支持多页查看)",
-            f" 3. 📉 导出个人专属 【高频弱项复盘清单】 (Markdown 格式)",
+            f" 1. 查看高频错误排行",
+            f" 2. 查看完整历史练习日志 (支持分页)",
+            f" 3. 导出的个人专属 【高频弱项复盘清单】 (Markdown 格式)",
             f" 4. 🚨 物理清空本地所有历史数据 (还原系统)",
             f" 0. 返回主菜单"
         ]
-        UI.box_print(" 📈 数据反馈与清理中心 ", box, UI.YELLOW)
-        c = input("\n👉 请输入查看或操控编号: ").strip()
+        UI.box_print(" 📈 数据中心 ", box, UI.YELLOW)
+        c = input("\n👉 请输入操控编号: ").strip()
         
-        if c.lower() == 'q' or c == ' ' or c == '0':
+        if c.lower() == 'q' or c == ' ' or c == '0' or c == '':
             break
             
         if c == '1':
@@ -711,15 +735,13 @@ def show_data_center():
                 total_errors = s.get("meaning_errors", 0) + s.get("spelling_errors", 0)
                 next_date_show = s.get("next_date", "")[:10] if s.get("interval", 0) > 0 else "未激活"
                 lines.append(f"{w:<12} | {s.get('meaning_errors',0):^6} | {s.get('spelling_errors',0):^6} | {total_errors:^6} | {next_date_show}")
-            UI.box_print(" 🔥 易错核心词Top 15 ", lines, UI.RED)
+            UI.box_print(" 🔥 高频错误单词（前15） ", lines, UI.RED)
             input("\n按回车继续...")
             
         elif c == '2':
-            # 🌟 新功能：完整日志分页显示 + 顶部高维累计数据统计
             def get_seconds(log_item):
                 if "raw_duration" in log_item:
                     return log_item["raw_duration"]
-                # 兼容旧版本字符串格式解析
                 dur_str = log_item.get("duration", "0秒")
                 match_dur = re.match(r'(?:(\d+)分)?(\d+)秒', dur_str)
                 if match_dur:
@@ -738,7 +760,7 @@ def show_data_center():
             total_time_str = f"{hours}小时{minutes}分{seconds}秒" if hours > 0 else f"{minutes}分{seconds}秒"
             
             header_summary = [
-                f"{UI.BOLD}📊 历史累计学习统计数据：{UI.END}",
+                f"{UI.BOLD}📊 历史累计统计：{UI.END}",
                 f"   - 总练习次数: {UI.GREEN}{total_sessions}{UI.END} 次",
                 f"   - 总刷题数量: {UI.GREEN}{total_questions}{UI.END} 道 (做错 {UI.RED}{total_errors}{UI.END} 道)",
                 f"   - 总练习用时: {UI.YELLOW}{total_time_str}{UI.END}",
@@ -759,14 +781,15 @@ def show_data_center():
                 
                 lines.append("")
                 lines.append(f"--- 第 {i//page_size + 1} 页 / 共 {-(total_logs//-page_size)} 页 (回车下翻, 输入 q 或空格退出) ---")
-                UI.box_print(" 🗓️ 完整历史背词日志 ", lines, UI.BLUE)
+                UI.box_print(" 🗓️ 历史日志 ", lines, UI.BLUE)
                 
                 cmd = input().strip().lower()
-                if cmd == 'q' or cmd == ' ':
-                    exit_log_view = True
-                    break
+                if cmd == 'q' or cmd == ' ' or cmd == '':
+                    if cmd == 'q' or cmd == ' ':
+                        exit_log_view = True
+                        break
             else:
-                input(f"\n{UI.GRAY}已展示全部日志。按回车返回...{UI.END}")
+                input(f"\n已展示全部日志。按回车返回...")
             
         elif c == '3':
             filename = "Weak_Words_Report.md"
@@ -780,9 +803,9 @@ def show_data_center():
                         s_err = s.get("spelling_errors", 0)
                         if (m_err + s_err) > 0:
                             f.write(f"| **{w}** | {m_err} | {s_err} | {s.get('interval', 0)} 天 | {s.get('next_date', '')[:10]} |\n")
-                input(f"\n{UI.GREEN}✔ 报告成功导出至: {filename}。{UI.END}\n按回车继续...")
+                input(f"\n✔ 报告成功导出至: {filename}。按回车继续...")
             except Exception as e:
-                input(f"\n{UI.RED}❌ 导出失败: {e}。按回车继续...{UI.END}")
+                input(f"\n[错误] 导出失败: {e}。按回车继续...")
                 
         elif c == '4':
             UI.clear_screen()
@@ -790,8 +813,8 @@ def show_data_center():
                 " 警告：该操作将执行【不可逆】的全面大扫除！",
                 "",
                 "  将彻底抹除本地的：",
-                "   - 历史答题错题本排行与艾宾浩斯参数",
-                "   - 每次练习耗时持久化日志",
+                "   - 历史答题错题本排行与周期参数",
+                "   - 每次练习耗时日志",
                 "   - 外部自定义导入的词表",
                 "   - 上次选中的词库记忆配置",
                 "",
@@ -801,17 +824,17 @@ def show_data_center():
             double_check = input("\n👉 请输入完整的 'YES' 确认执行: ").strip()
             if double_check == "YES":
                 dm.clear_all_data()
-                print(f"\n{UI.GREEN}所有本地数据及配置已完全清除！请重启系统。{UI.END}")
+                print(f"\n所有本地数据已清空。请重启系统。")
                 input("\n按回车退出系统...")
                 exit()
             else:
-                input(f"\n{UI.GRAY}已取消重置操作。按回车继续...{UI.END}")
+                input(f"\n已取消重置操作。按回车继续...")
 
 def run_wrong_words_reprint():
     wrong_words = [w for w, s in dm.stats.items() if (s.get("meaning_errors", 0) + s.get("spelling_errors", 0)) > 0]
     if not wrong_words:
         UI.clear_screen()
-        input(f"\n{UI.GREEN}✨ 恭喜！目前本地记录中没有任何错题。按回车返回...{UI.END}")
+        input(f"\n当前没有错题记录。按回车返回...")
         return
     full_bank = {}
     full_bank.update(DEFAULT_WORD_BANK)
@@ -821,9 +844,9 @@ def run_wrong_words_reprint():
         for w in full_bank[k]:
             if w['word'] in wrong_words: pool.append(w)
     if not pool:
-        input(f"\n{UI.GRAY}错题库对应的源词表已被卸载或未加载。按回车返回...{UI.END}")
+        input(f"\n错题库对应的源词表已被卸载或未加载。按回车返回...")
         return
-    print(f"\n🔔 成功从历史记录打捞出 {len(pool)} 个错词！")
+    print(f"\n已加载 {len(pool)} 个错题。")
     run_quiz_session(pool, "mix")
 
 # ==================== 9. 主控入口循环 ====================
@@ -845,7 +868,7 @@ def main():
             pool_name = "+".join(selected_keys) if len(selected_keys) <= 2 else f"{selected_keys[0]}等{len(selected_keys)}个词表"
         else:
             for l in full_bank.values(): current_pool.extend(l)
-            pool_name = "所有融合激活词表" if dm.custom_bank else "所有课本词 (含派生独立词)"
+            pool_name = "所有词表" if dm.custom_bank else "所有课本词"
             
         now_time_iso = datetime.now().isoformat()
         due_count = sum(1 for w in current_pool if dm.stats.get(w['word'], {}).get('next_date', now_time_iso) <= now_time_iso)
@@ -855,7 +878,7 @@ def main():
             f" 当前词库范围: {UI.YELLOW}{pool_name}{UI.END}",
             f" 可选单词基数: {UI.GREEN}{len(current_pool)} 个词{UI.END} | {UI.CYAN}今日到期需复习: {due_count} 词{UI.END}"
         ]
-        UI.box_print(" ⚡ 高中英语智能自适应系统 v6.0 ⚡ ", status, UI.GREEN)
+        UI.box_print(" ⚡ 高中英语背词系统 v6.0 ⚡ ", status, UI.GREEN)
         
         menu = [
             f"  [1] 看词辨义 (库内动态匹配干扰 + 词性显示)",
@@ -874,7 +897,7 @@ def main():
         mode = input(f"\n👉 请输入操作编号: ").strip()
         if mode == '0' or mode.lower() == 'q' or mode == ' ':
             UI.clear_screen()
-            print(f"\n{UI.GREEN}✨ 进度与词库记忆已自动同步。智能词学网络已关闭，祝你学习进步，高考加油！ 👋{UI.END}\n")
+            print(f"\n已退出背词系统。\n")
             break
             
         if mode in ['1', '2', '3', '4']: run_quiz_session(current_pool, mode)
