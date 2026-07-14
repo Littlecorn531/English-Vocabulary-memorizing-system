@@ -37,3 +37,42 @@
 * `study_logs.json`: 记录历次练习的测试时间、模式、题量、错误数及秒级耗时。
 * `vocab_config.json`: 保存用户上一次选择的词表小节范围，以便下次启动时自动恢复配置。
 * `custom_lists.json`: 存放通过外部导入渠道读入的自定义词表数据。
+
+## 📥 词表导入方法与数据格式
+
+系统支持通过本地绝对路径导入外部词库，兼容 **JSON** 与 **TXT** 两种文件格式。
+
+### 1. 导入操作步骤
+1. 运行系统并在浏览器中打开交互界面。
+2. 切换至侧边栏的 **“🔄 子词词表管理”** 选项卡。
+3. 在“导入外部本地词库”输入框中，键入本地词表文件的绝对路径。例如：
+   * Windows 系统：`D:\\english\\unit1.json` 或 `E:\\vocab\\unit2.txt`
+   * macOS/Linux 系统：`/Users/username/vocab/unit1.json`
+4. 点击 **“执行导入”** 按钮。导入成功后，系统会弹窗提示成功读取的词条数量。
+5. 在下方列表中勾选新导入的词表，点击“保存词表勾选”即可将其纳入测试池。
+
+---
+
+### 2. 词表数据格式规范
+
+#### ① JSON 格式（标准结构）
+JSON 文件须以“单元/小节名称”作为键（Key），以词条对象数组作为值（Value）。
+
+**格式范例：**
+```json
+{
+    "必修一 Unit 1 - Topic Talk": [
+        {
+            "word": "senior",
+            "meanings": ["高级的", "地位较高的", "年长的"],
+            "hint": "adj.",
+            "sentences": [
+                "As a senior student in our high school, she is expected to set a good example.",
+                "The senior manager decided to hire more creative employees."
+            ],
+            "related_forms": {
+                "seniority": "n."
+            }
+        }
+    ]
+}
