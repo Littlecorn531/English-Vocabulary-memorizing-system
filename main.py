@@ -169,10 +169,7 @@ def check_pos_match(p1, p2):
     set2 = set(re.findall(r'[a-z]+\.', p2.lower()))
     return not set1.isdisjoint(set2)
 
-def fuzzy_check(user_input, target):
-    return calculate_similarity(user_input, target) >= 0.85
-
-def generate_smart_distractors_with_sources(target_item, full_pool):
+def generate_smart_distractors_with_sources(target_item, full_pool, count=3):
     target_word = target_item['word']
     target_hint = target_item.get('hint', '')
     target_meanings = set(target_item['meanings'])
@@ -198,8 +195,8 @@ def generate_smart_distractors_with_sources(target_item, full_pool):
         if chosen_m not in seen_meanings:
             distractors_data.append((chosen_m, item['word']))
             seen_meanings.add(chosen_m)
-        if len(distractors_data) == 3: break
-    while len(distractors_data) < 3 and full_pool:
+        if len(distractors_data) == count: break
+    while len(distractors_data) < count and full_pool:
         random_item = random.choice(full_pool)
         chosen_m = random.choice(random_item['meanings'])
         if chosen_m not in seen_meanings:
@@ -217,10 +214,11 @@ class SessionState:
         self.error_count = 0
         self.answered_count = 0  
         self.start_time = 0
-        self.current_mode = "1"
+        self.current_modes = ["1", "2", "3"] # 🌟 支持自定义组合的多选题型池
         self.current_word = None
         self.options_data = []
         self.expected_answer = "" 
+        self.logged = False       
 
 ss = SessionState()
 
@@ -246,17 +244,17 @@ HTML_TEMPLATE = """
             --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, sans-serif;
         }
         
-        /* 极致柔雾粉日间主题 */
+        /* 🌟 恢复经典而饱满的暖粉色柔雾日间主题 */
         body.light-theme {
-            --bg-gradient: linear-gradient(135deg, #fdf9fa, #fbf2f0, #fefbfc);
-            --bg-color: #fdf9fa;
-            --text-color: #4f3a3c;
-            --sidebar-bg: rgba(251, 241, 242, 0.75);
-            --card-bg: rgba(255, 255, 255, 0.7);
-            --border-glow: 1px solid rgba(215, 175, 180, 0.2);
-            --accent-color: #d89fa8; 
-            --success-color: #8cbfa0; 
-            --error-color: #e5938f; 
+            --bg-gradient: linear-gradient(135deg, #fff0f5, #ffd1dc, #ffe4e1);
+            --bg-color: #fff0f5;
+            --text-color: #5c2d3a;
+            --sidebar-bg: rgba(255, 240, 245, 0.65);
+            --card-bg: rgba(255, 255, 255, 0.55);
+            --border-glow: 1px solid rgba(220, 100, 130, 0.15);
+            --accent-color: #d14d78;
+            --success-color: #24b25b;
+            --error-color: #ff3b30;
         }
         body {
             background: var(--bg-gradient);
@@ -568,17 +566,31 @@ HTML_TEMPLATE = """
             
             <div id="setup-panel" class="card">
                 <h3>参数配置</h3>
-                <label>测试题型：</label>
-                <div class="segmented-control" style="max-width: 100%;">
-                    <button id="mode-btn-1" class="segment-btn active" onclick="setMode('1')">看词辨义</button>
-                    <button id="mode-btn-2" class="segment-btn" onclick="setMode('2')">完形拼写</button>
-                    <button id="mode-btn-3" class="segment-btn" onclick="setMode('3')">词形变化</button>
-                    <button id="mode-btn-4" class="segment-btn" onclick="setMode('4')">混合挑战</button>
+                
+                <!-- 🌟 核心改进：支持勾选任意题型组合的自选多选卡片 -->
+                <label style="margin-bottom:8px; display:block; font-weight:600;">测试题型（支持勾选多选组合）：</label>
+                <div style="display: flex; gap: 12px; margin-bottom: 25px; flex-wrap: wrap;">
+                    <label class="checkbox-container" style="min-width: 130px; margin-bottom:0;">
+                        <span>看词辨义</span>
+                        <input type="checkbox" name="quiz-mode-checkbox" value="1" checked>
+                        <div class="toggle-switch"></div>
+                    </label>
+                    <label class="checkbox-container" style="min-width: 130px; margin-bottom:0;">
+                        <span>完形拼写</span>
+                        <input type="checkbox" name="quiz-mode-checkbox" value="2" checked>
+                        <div class="toggle-switch"></div>
+                    </label>
+                    <label class="checkbox-container" style="min-width: 130px; margin-bottom:0;">
+                        <span>词形变化</span>
+                        <input type="checkbox" name="quiz-mode-checkbox" value="3" checked>
+                        <div class="toggle-switch"></div>
+                    </label>
                 </div>
 
                 <label>本次测试题量：</label>
                 <input type="number" id="ques-count" value="5" min="1" max="100" style="margin-bottom:20px; display:block; width:100%; max-width:300px; padding:12px; background:rgba(0,0,0,0.15); color:var(--text-color); border:var(--border-glow); border-radius:var(--border-radius); box-sizing:border-box;"><br>
                 
+                <!-- 自动切题 -->
                 <label class="checkbox-container" style="max-width:300px; margin-bottom:10px;">
                     <span>答对后自动下一题</span>
                     <input type="checkbox" id="auto-advance-select" checked onchange="toggleAutoAdvanceUI()">
@@ -587,9 +599,11 @@ HTML_TEMPLATE = """
                 
                 <div id="delay-input-container" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.01); border:var(--border-glow); padding:10px 15px; border-radius:var(--border-radius); max-width:300px; margin-bottom:20px; box-sizing:border-box; transition:all 0.3s;">
                     <span style="font-size:14px; opacity:0.8;">等待时间 (秒)：</span>
-                    <input type="number" id="auto-advance-delay" value="3" min="1" max="10" style="width:60px; padding:6px; border-radius:8px; border:var(--border-glow); background:rgba(0,0,0,0.15); color:var(--text-color); text-align:center; outline:none;">
+                    <!-- 🌟 step 改为 0.1，允许小数输入 -->
+                    <input type="number" id="auto-advance-delay" value="3" min="0.1" max="10" step="0.1" style="width:60px; padding:6px; border-radius:8px; border:var(--border-glow); background:rgba(0,0,0,0.15); color:var(--text-color); text-align:center; outline:none;">
                 </div>
 
+                <!-- 自动显示释义 -->
                 <label class="checkbox-container" style="max-width:300px; margin-bottom:10px;">
                     <span>无操作自动显示释义</span>
                     <input type="checkbox" id="auto-hint-select" checked onchange="toggleAutoHintUI()">
@@ -598,7 +612,8 @@ HTML_TEMPLATE = """
                 
                 <div id="hint-delay-container" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.01); border:var(--border-glow); padding:10px 15px; border-radius:var(--border-radius); max-width:300px; margin-bottom:20px; box-sizing:border-box; transition:all 0.3s;">
                     <span style="font-size:14px; opacity:0.8;">提示等待时间 (秒)：</span>
-                    <input type="number" id="auto-hint-delay" value="8" min="1" max="30" style="width:60px; padding:6px; border-radius:8px; border:var(--border-glow); background:rgba(0,0,0,0.15); color:var(--text-color); text-align:center; outline:none;">
+                    <!-- 🌟 step 改为 0.1，允许小数输入 -->
+                    <input type="number" id="auto-hint-delay" value="8" min="0.1" max="30" step="0.1" style="width:60px; padding:6px; border-radius:8px; border:var(--border-glow); background:rgba(0,0,0,0.15); color:var(--text-color); text-align:center; outline:none;">
                 </div>
                 
                 <button class="btn-submit" onclick="startQuiz()">开启测试</button>
@@ -607,6 +622,8 @@ HTML_TEMPLATE = """
             <div id="quiz-panel" class="card" style="display:none;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px; width: 100%;">
                     <span id="quiz-progress" style="font-weight:700; color:var(--accent-color);">Progress: 0/0</span>
+                    <!-- 🌟 右上角实时秒表计时器 -->
+                    <span id="quiz-timer" style="font-weight:700; color:var(--success-color); font-size:18px;">⏱ 00:00</span>
                     <button class="btn-submit" style="background:var(--error-color); padding:8px 18px;" onclick="exitQuiz()">中止退出</button>
                 </div>
                 <h2 id="quiz-question-title" style="font-size:24px; line-height:1.4; margin-bottom:25px;">-</h2>
@@ -669,6 +686,9 @@ HTML_TEMPLATE = """
         let hintTimer = null;          
         let autoHintEnabled = true;    
         let autoHintDelay = 8000;      
+        // 🌟 新增：计时表指针
+        let quizTimerInterval = null;
+        let quizStartTime = 0;
 
         function setTheme(theme) {
             document.querySelectorAll('.theme-selector .segment-btn').forEach(btn => btn.classList.remove('active'));
@@ -679,12 +699,6 @@ HTML_TEMPLATE = """
                 document.body.classList.remove('light-theme');
                 document.getElementById('theme-btn-dark').classList.add('active');
             }
-        }
-        function setMode(mode) {
-            selectedQuizMode = mode;
-            document.querySelectorAll('.segmented-control .segment-btn').forEach(btn => btn.classList.remove('active'));
-            let btn = document.getElementById('mode-btn-' + mode);
-            if(btn) btn.classList.add('active');
         }
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
@@ -807,13 +821,40 @@ HTML_TEMPLATE = """
             let sum_html = `<strong>历史累计统计：</strong> 练习次数: ${data.total_sessions} 次 | 刷题总量: ${data.total_questions} 道 | 做错总数: ${data.total_errors} 道 | 实际错误率: <span style="color:var(--error-color); font-weight:700;">${data.error_rate}%</span> | 累计用时: ${data.total_time}`;
             document.getElementById('logs-summary').innerHTML = sum_html;
 
-            let html = '<table><tr><th>时间</th><th>题型</th><th>做题量</th><th>答错数</th><th>实际正确率</th><th>耗时</th></tr>';
+            // 🌟 表格结构新增“操作”栏
+            let html = '<table><tr><th>时间</th><th>题型</th><th>做题量</th><th>答错数</th><th>实际正确率</th><th>耗时</th><th>操作</th></tr>';
             data.logs.forEach(l => {
                 let accuracy = l.total > 0 ? (((l.total - l.errors)/l.total)*100).toFixed(1) + '%' : '0%';
-                html += `<tr><td>${l.time}</td><td>${l.mode}</td><td>${l.total}</td><td>${l.errors}</td><td>${accuracy}</td><td>${l.duration}</td></tr>`;
+                // 🌟 新增：删除单条背词记录按键
+                html += `<tr>
+                    <td>${l.time}</td>
+                    <td>${l.mode}</td>
+                    <td>${l.total}</td>
+                    <td>${l.errors}</td>
+                    <td>${accuracy}</td>
+                    <td>${l.duration}</td>
+                    <td><button class="btn-submit" style="background:var(--error-color); padding:5px 12px; font-size:12px;" onclick="deleteLog('${l.time}')">🗑️ 删除</button></td>
+                </tr>`;
             });
             html += '</table>';
             document.getElementById('logs-table').innerHTML = html;
+        }
+
+        // 🌟 新增：发送单条历史记录删除请求至后端
+        async function deleteLog(timeStr) {
+            if(confirm('确认要永久删除这条历史背词记录吗？')) {
+                let res = await fetch('/api/delete_log', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({time: timeStr})
+                });
+                let data = await res.json();
+                if(data.success) {
+                    loadLogs(); 
+                } else {
+                    alert('删除失败: ' + data.error);
+                }
+            }
         }
 
         async function importFile() {
@@ -856,11 +897,9 @@ HTML_TEMPLATE = """
             }
         }
 
-        // 🌟 核心改进：发送完退出指令后，网页能正常转入“已关机页面”而不会报错弹窗
         async function shutdownBackend() {
             if(confirm('确定要安全终止系统后端进程吗？\\n终止后当前背词网页将断开服务并锁定。')) {
                 try {
-                    // 先在本地完成关机界面的 UI 切换，避免网络连接断开后 fetch 失败引发 catch 异常
                     let shutdownPageHtml = `
                         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; font-family:var(--font-family); background:var(--bg-gradient); color:var(--text-color);">
                             <h1 style="color:var(--error-color); font-size:48px; margin-bottom:10px;">⏻ 后端进程已安全关闭</h1>
@@ -870,34 +909,67 @@ HTML_TEMPLATE = """
                     fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
                     document.body.innerHTML = shutdownPageHtml;
                 } catch(e) {
-                    // 容错处理
                 }
             }
+        }
+
+        // 🌟 新增：启动前端计时器
+        function startTimer() {
+            if(quizTimerInterval) clearInterval(quizTimerInterval);
+            quizStartTime = Date.now();
+            quizTimerInterval = setInterval(() => {
+                let elapsed = Math.floor((Date.now() - quizStartTime) / 1000);
+                let mins = Math.floor(elapsed / 60);
+                let secs = elapsed % 60;
+                document.getElementById('quiz-timer').innerText = `⏱ ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+
+        // 🌟 新增：停止前端计时器
+        function stopTimer() {
+            if(quizTimerInterval) {
+                clearInterval(quizTimerInterval);
+                quizTimerInterval = null;
+            }
+            document.getElementById('quiz-timer').innerText = `⏱ 00:00`;
         }
 
         async function startQuiz() {
             let count = document.getElementById('ques-count').value;
             autoAdvanceEnabled = document.getElementById('auto-advance-select').checked;
-            let delaySeconds = parseInt(document.getElementById('auto-advance-delay').value) || 3;
+            let delaySeconds = parseFloat(document.getElementById('auto-advance-delay').value) || 3;
             autoAdvanceDelay = delaySeconds * 1000;
             
             autoHintEnabled = document.getElementById('auto-hint-select').checked;
-            let hintSeconds = parseInt(document.getElementById('auto-hint-delay').value) || 8;
+            let hintSeconds = parseFloat(document.getElementById('auto-hint-delay').value) || 8;
             autoHintDelay = hintSeconds * 1000;
+
+            // 🌟 核心修改：读取用户勾选的所有题型模式组合，转换为数组传输
+            let checkedModes = Array.from(document.querySelectorAll('input[name="quiz-mode-checkbox"]:checked')).map(cb => cb.value);
+            if (checkedModes.length === 0) {
+                alert('请至少勾选一种测试题型！');
+                return;
+            }
             
             await fetch('/api/start_quiz', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({mode: selectedQuizMode, count: parseInt(count)})
+                body: JSON.stringify({
+                    modes: checkedModes, 
+                    count: parseInt(count)
+                })
             });
             document.getElementById('setup-panel').style.display = 'none';
             document.getElementById('quiz-panel').style.display = 'block';
+            
+            startTimer(); // 🌟 启动测验计时器
             fetchQuestion();
         }
 
         async function exitQuiz() {
             if(nextBtnTimer) clearTimeout(nextBtnTimer);
             if(hintTimer) clearTimeout(hintTimer);
+            stopTimer(); // 🌟 停止测验计时器
             await fetch('/api/exit_quiz');
             document.getElementById('setup-panel').style.display = 'block';
             document.getElementById('quiz-panel').style.display = 'none';
@@ -927,6 +999,7 @@ HTML_TEMPLATE = """
             currentQuestionData = data; 
 
             if(data.finished) {
+                stopTimer(); // 🌟 完成测试后，终止并清理计时器
                 let acc = data.report.answered > 0 ? (((data.report.answered - data.report.errors)/data.report.answered)*100).toFixed(1) + '%' : '0%';
                 let resultHtml = `<h2>测试完毕！</h2>
                 <p>实际完成: ${data.report.answered} 道 | 答错: ${data.report.errors} 道</p>
@@ -963,15 +1036,22 @@ HTML_TEMPLATE = """
                 let placeholderText = data.first_letter ? `首字母为 ${data.first_letter}，请输入完整单词` : "请输入完整单词";
                 html += `<input type="text" id="full-spelling-answer" class="cloze-full-input" placeholder="${placeholderText}" onkeydown="if(event.key==='Enter') submitAnswer(this.value.trim())">`;
 
-                html += `<div style="display:flex; justify-content:center; gap:15px; align-items:center; width:100%;">
-                    <button class="btn-submit" onclick="submitAnswer(document.getElementById('full-spelling-answer').value.trim())">提交答案</button>
-                    <button class="btn-submit" style="background:rgba(255,255,255,0.08); border:var(--border-glow);" onclick="toggleHint()">💡 显示释义提示</button>
-                </div>`;
-                
-                if(data.chinese_hint) {
-                    html += `<div id="quiz-hint-box" style="display:none; margin-top:20px; font-size:16px; color:var(--accent-color); padding:15px; border-radius:var(--border-radius); background:rgba(255,255,255,0.02); border:var(--border-glow); width:100%; max-width:600px; box-sizing:border-box;">
-                        <strong>提示：</strong> ${data.chinese_hint}
+                // 🌟 核心改进：当题型为词形变化（Mode 3）时，全面删除释义提示按键和对应面板，不渲染此项
+                if(data.mode === '3') {
+                    html += `<div style="display:flex; justify-content:center; gap:15px; align-items:center; width:100%;">
+                        <button class="btn-submit" onclick="submitAnswer(document.getElementById('full-spelling-answer').value.trim())">提交答案</button>
                     </div>`;
+                } else {
+                    html += `<div style="display:flex; justify-content:center; gap:15px; align-items:center; width:100%;">
+                        <button class="btn-submit" onclick="submitAnswer(document.getElementById('full-spelling-answer').value.trim())">提交答案</button>
+                        <button class="btn-submit" style="background:rgba(255,255,255,0.08); border:var(--border-glow);" onclick="toggleHint()">💡 显示释义提示</button>
+                    </div>`;
+                    
+                    if(data.chinese_hint) {
+                        html += `<div id="quiz-hint-box" style="display:none; margin-top:20px; font-size:16px; color:var(--accent-color); padding:15px; border-radius:var(--border-radius); background:rgba(255,255,255,0.02); border:var(--border-glow); width:100%; max-width:600px; box-sizing:border-box;">
+                            <strong>提示：</strong> ${data.chinese_hint}
+                        </div>`;
+                    }
                 }
                 
                 document.getElementById('quiz-question-title').innerText = '根据语境拼写单词';
@@ -981,7 +1061,8 @@ HTML_TEMPLATE = """
             let fullInputEl = document.getElementById('full-spelling-answer');
             if(fullInputEl) fullInputEl.focus();
 
-            if(data.mode !== '1' && data.chinese_hint && autoHintEnabled) {
+            // 词形变化模式下，不启动无操作自动提示释义的定时器
+            if(data.mode !== '1' && data.chinese_hint && autoHintEnabled && data.mode !== '3') {
                 hintTimer = setTimeout(() => {
                     showHintAutomatically();
                 }, autoHintDelay);
@@ -1079,7 +1160,6 @@ def wsgi_app(environ, start_response):
         start_response('200 OK', [('Content-type', 'text/html; charset=utf-8')])
         return [HTML_TEMPLATE.encode('utf-8')]
         
-    # 🌟 终止关机接口（通过微线程延时 0.2 秒退出，保障浏览器可以安全取得回应）
     if path == '/api/shutdown' and method == 'POST':
         print("\n[系统通知] 网页端关机信号已接收，安全释放程序...")
         def kill_proc():
@@ -1159,6 +1239,20 @@ def wsgi_app(environ, start_response):
             "error_rate": error_rate,
             "total_time": total_time_str
         })
+
+    # 🌟 新增：支持单条历史日志删除接口
+    elif path == '/api/delete_log' and method == 'POST':
+        try:
+            request_body_size = int(environ.get('CONTENT_LENGTH', 0))
+            request_body = environ['wsgi.input'].read(request_body_size)
+            data = json.loads(request_body.decode('utf-8'))
+            target_time = data.get("time")
+            if target_time:
+                dm.logs = [l for l in dm.logs if l.get("time") != target_time]
+                dm.save_all()
+            return api_response(start_response, {"success": True})
+        except Exception as e:
+            return api_response(start_response, {"success": False, "error": str(e)})
 
     elif path == '/api/import_file' and method == 'POST':
         try:
@@ -1276,44 +1370,52 @@ def wsgi_app(environ, start_response):
         due_pool = [w for w in active_pool if dm.stats.get(w['word'], {}).get('next_date', now_time_iso) <= now_time_iso]
         pool_to_draw = due_pool if due_pool else active_pool
         
-        # 🌟 核心改进：当用户明确选择“词形变化（Mode 3）”时，在抽词源头进行过滤。
-        # 仅筛选出真正配置了“不同拼写衍生词”的单词进入该场测试的候选池。
-        quiz_mode = str(data.get("mode", "1"))
-        if quiz_mode == '3':
+        # 🌟 核心改进：当所勾选的多选题型集合（modes）仅包含 "3"（词形转换）时，进行源头过滤
+        checked_modes = data.get("modes", ["1", "2", "3"])
+        if len(checked_modes) == 1 and checked_modes[0] == "3":
             filtered_pool = [
                 w for w in pool_to_draw 
                 if any(k.strip().lower() != w['word'].strip().lower() for k in w.get("related_forms", {}).keys())
             ]
-            # 容错：如果用户选中的整个小节完全没有可变形的单词，则保留原样，避免候选池为空
             if filtered_pool:
                 pool_to_draw = filtered_pool
         
-        ss.current_pool = active_pool
-        if not pool_to_draw:
-            pool_to_draw = active_pool if active_pool else [{"word": "test", "meanings": ["测试"], "sentences": ["test"], "hint": "n.", "related_forms": {}}]
+        # 🌟 核心优化：采用 random.sample (无放回抽样) 彻底杜绝单次测试中单词重复的问题
+        count = data.get("count", 5)
+        k_val = min(count, len(pool_to_draw))
+        if k_val > 0:
+            ss.quiz_words = random.sample(pool_to_draw, k_val)
+        else:
+            ss.quiz_words = []
             
-        ss.quiz_words = [random.choice(pool_to_draw) for _ in range(data.get("count", 5))]
-        ss.total_ques = data.get("count", 5)
+        ss.current_pool = active_pool
+        ss.total_ques = k_val
         ss.current_index = 0
         ss.error_count = 0
         ss.answered_count = 0  
         ss.start_time = time.perf_counter()
-        ss.current_mode = quiz_mode
+        ss.current_modes = checked_modes # 🌟 接收用户多选勾选的测试题型集合
+        ss.logged = False                # 🌟 重置单次会话写入日志锁
         return api_response(start_response, {"success": True})
 
     elif path == '/api/exit_quiz':
-        if ss.answered_count > 0:
+        # 🌟 核心修复：检查 logged 锁状态，防止中途退出产生双份日志
+        if ss.answered_count > 0 and not ss.logged:
             duration = time.perf_counter() - ss.start_time
-            actual_mode_name = "形似字义辨析" if ss.current_mode=='1' else "完形空缺拼写" if ss.current_mode=='2' else "语法填空词形变化" if ss.current_mode=='3' else "综合模式"
+            actual_mode_name = "自选组合挑战"
             dm.add_study_log(actual_mode_name, ss.answered_count, ss.error_count, duration)
+            ss.logged = True 
         ss.quiz_words = []
         return api_response(start_response, {"success": True})
 
     elif path == '/api/get_question':
         if ss.current_index >= len(ss.quiz_words):
             duration = time.perf_counter() - ss.start_time
-            actual_mode_name = "形似字义辨析" if ss.current_mode=='1' else "完形空缺拼写" if ss.current_mode=='2' else "语法填空词形变化" if ss.current_mode=='3' else "综合模式"
-            dm.add_study_log(actual_mode_name, ss.answered_count, ss.error_count, duration)
+            actual_mode_name = "自选组合挑战"
+            # 🌟 核心修复：检查 logged 锁状态，防止在切完最后一题时写入双份日志
+            if not ss.logged and ss.answered_count > 0:
+                dm.add_study_log(actual_mode_name, ss.answered_count, ss.error_count, duration)
+                ss.logged = True 
             mins, secs = divmod(int(duration), 60)
             time_str = f"{mins}分{secs}秒" if mins > 0 else f"{secs}秒"
             return api_response(start_response, {
@@ -1326,15 +1428,22 @@ def wsgi_app(environ, start_response):
             })
 
         ss.current_word = ss.quiz_words[ss.current_index]
-        mode = ss.current_mode if ss.current_mode != '4' else random.choice(['1', '2', '3'])
+        # 🌟 自适应：在用户勾选的多选题型集合（ss.current_modes）中进行自适应随机轮抽
+        mode = random.choice(ss.current_modes)
         
+        # 🌟 自适应降级：如果抽到的是 Mode 3 且无衍生词，则自动轮抽用户勾选的其他题型；
+        # 若只选了 3 且无派生词，则硬降级到完形拼写（Mode 2）
         if mode == '3':
             valid_relations = {
                 k: v for k, v in ss.current_word.get("related_forms", {}).items() 
                 if k.strip().lower() != ss.current_word['word'].strip().lower()
             }
             if not valid_relations:
-                mode = '2'
+                alternatives = [m for m in ss.current_modes if m != '3']
+                if alternatives:
+                    mode = random.choice(alternatives)
+                else:
+                    mode = '2'
 
         res_data = {
             "finished": False,
@@ -1346,7 +1455,7 @@ def wsgi_app(environ, start_response):
         if mode == '1':  
             correct_display = random.choice(ss.current_word['meanings'])
             options_data = [(correct_display, ss.current_word['word'])]
-            wrong_data = generate_smart_distractors_with_sources(ss.current_word, ss.current_pool)
+            wrong_data = generate_smart_distractors_with_sources(ss.current_word, ss.current_pool, count=3)
             options_data.extend(wrong_data)
             random.shuffle(options_data)
             
